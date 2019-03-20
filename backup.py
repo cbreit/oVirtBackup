@@ -1,9 +1,9 @@
 #!/usr/bin/python
 import logging
 from argparse import ArgumentParser, FileType
-import ovirtsdk.api
-from ovirtsdk.xml import params
-from ovirtsdk.infrastructure import errors
+# import ovirtsdk.api
+# from ovirtsdk.xml import params
+# from ovirtsdk.infrastructure import errors
 import sys
 import time
 from vmtools import VMTools
@@ -221,11 +221,12 @@ def main(argv):
     
     # Add VM's with the tag to the vm list
     if opts.vm_tag:
-	vms=api.vms.list(max=400, query="tag="+opts.vm_tag)
+        vms=api.vms.list(max=400, query="tag="+opts.vm_tag)
         config.set_vm_names([vm.name for vm in vms])
-	# Update config file
-        if opts.config_file.name != "<stdin>":
-            config.write_update(opts.config_file.name)
+
+    # Update config file
+    if opts.config_file.name != "<stdin>":
+        config.write_update(opts.config_file.name)
 		
     # Test if config export_domain is valid
     if api.storagedomains.get(config.get_export_domain()) is None:

@@ -1,4 +1,4 @@
-from ConfigParser import (
+from configparser import (
     RawConfigParser,
     NoSectionError,
     NoOptionError,
@@ -12,7 +12,7 @@ from time import strftime
 CONFIG_SECTION = "config"
 DEFAULTS = {
     "logger_fmt": "%(asctime)s: %(message)s",
-    "logger_file_path": None,
+    "logger_file_path": "",
     "persist_memorystate": "false",
 }
 
@@ -24,7 +24,7 @@ class Config(object):
     def __init__(self, fd, debug, arguments):
         try:
             self._cp = config_parser = RawConfigParser(defaults=DEFAULTS)
-            config_parser.readfp(fd)
+            config_parser.read(fd.name)
 
             section = CONFIG_SECTION
             # Update with options passed from CLI interface
@@ -35,10 +35,11 @@ class Config(object):
             self.__vm_names = json.loads(config_parser.get(section, "vm_names"))
             self.__vm_middle = config_parser.get(section, "vm_middle")
             self.__vm_suffix = "_"
-            self.clear_vm_suffix
+            self.clear_vm_suffix()
             self.__server = config_parser.get(section, "server")
             self.__username = config_parser.get(section, "username")
             self.__password = config_parser.get(section, "password")
+            self.__ca = config_parser.get(section, "ca")
             self.__snapshot_description = config_parser.get(section, "snapshot_description")
             self.__cluster_name = config_parser.get(section, "cluster_name")
             self.__export_domain = config_parser.get(section, "export_domain")
@@ -55,7 +56,7 @@ class Config(object):
             self.__logger_file_path = config_parser.get(section, "logger_file_path")
             self.__persist_memorystate = config_parser.getboolean(section, "persist_memorystate")
         except (NoSectionError, NoOptionError) as e:
-            print str(e)
+            print(e)
             sys.exit(1)
 
     def get_vm_names(self):
@@ -92,6 +93,8 @@ class Config(object):
     def get_password(self):
         return self.__password
 
+    def get_ca(self):
+        return self.__ca
 
     def get_snapshot_description(self):
         return self.__snapshot_description
