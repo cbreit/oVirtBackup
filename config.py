@@ -35,7 +35,7 @@ class Config(object):
             self.__vm_names = json.loads(config_parser.get(section, "vm_names"))
             self.__vm_middle = config_parser.get(section, "vm_middle")
             self.__vm_suffix = "_"
-            self.clear_vm_suffix()
+            self.clear_vm_suffix
             self.__server = config_parser.get(section, "server")
             self.__username = config_parser.get(section, "username")
             self.__password = config_parser.get(section, "password")
@@ -148,7 +148,7 @@ class Config(object):
         return self.__storage_space_threshold
 
 
-    def get_logger_fmt(self):
+    def get_logger_format(self):
         return self.__logger_fmt
 
     def get_logger_file_path(self):

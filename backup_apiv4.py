@@ -5,7 +5,7 @@ import time
 import ovirtsdk4 as sdk
 import ovirtsdk4.types as otypes
 
-from backup import initialize_logger, arguments_to_dict, create_argparser
+from backup import arguments_to_dict, create_argparser
 from config import Config
 
 
@@ -13,8 +13,13 @@ from config import Config
 
 class OvirtBackup:
     def __init__(self, argv, url=None, username=None, password=None, ca_file=None):
-        self.__logger = logging.getLogger()
+
         self.__config = config = OvirtBackup.load_config(argv)
+        OvirtBackup.initialize_logger_config(config.get_logger_format(),
+                                             config.get_logger_file_path(), config.get_debug())
+
+        self.__logger = logging.getLogger()
+
         if url is None:
             url = config.get_server()
 
@@ -27,7 +32,8 @@ class OvirtBackup:
         if ca_file is None:
             ca_file = config.get_ca()
 
-        self.__connection = OvirtBackup.connect_to_server(url, username, password, ca_file)
+
+        self.__connection = OvirtBackup.connect_to_server(url, username, password, ca_file, self.__logger)
         self.__vms_service = self.__connection.system_service().vms_service()
         self.__time_start = int(time.time())
 
@@ -106,10 +112,18 @@ class OvirtBackup:
         with opts.config_file:
             config = Config(opts.config_file, opts.debug, config_arguments)
 
-        initialize_logger(
-            config.get_logger_fmt(), config.get_logger_file_path(), opts.debug)
-
         return config
+
+    # --------------------------------------------------------------------------------------------------
+    @staticmethod
+    def initialize_logger_config(logger_fmt, logger_file_path, debug):
+        logger_options = {
+            "format": logger_fmt,
+            "level":  logging.DEBUG if debug else logging.INFO,
+        }
+        if logger_file_path:
+            logger_options['filename'] = logger_file_path
+        logging.basicConfig(**logger_options)
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
@@ -380,14 +394,14 @@ class OvirtBackup:
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
-    def connect_to_server(url, username, password, ca_file, debug=False):
+    def connect_to_server(url, username, password, ca_file, logger, debug=False):
         connection = sdk.Connection(
             url=url,
             username=username,
             password=password,
             ca_file=ca_file,
             debug=debug,
-            log=logging.getLogger(),
+            log=logger,
             timeout=0
         )
         return connection
@@ -395,10 +409,7 @@ class OvirtBackup:
 # --------------------------------------------------------------------------------------------------
 # --------------------------------------------------------------------------------------------------
 
-
 def main(argv):
-    logging.basicConfig(level=logging.DEBUG, filename='example.log')
-
     ovirt_backup = OvirtBackup(argv)
     ovirt_backup.run_backup()
 

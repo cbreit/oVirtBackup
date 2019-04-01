@@ -201,7 +201,7 @@ def main(argv):
     with opts.config_file:
         config = Config(opts.config_file, opts.debug, config_arguments)
     initialize_logger(
-        config.get_logger_fmt(), config.get_logger_file_path(), opts.debug,
+        config.get_logger_format(), config.get_logger_file_path(), opts.debug,
     )
 
     time_start = int(time.time())
