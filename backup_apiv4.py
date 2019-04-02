@@ -53,6 +53,7 @@ class OvirtBackup:
 
         vm = vms_service.list(search='name=' + vm_name)[0]
         if vm is None:
+            self.__logger.error("Following VM does not exist anymore: " + vm_name)
             raise(ValueError("Following VM does not exist anymore: " + vm_name))
 
         snapshots_service = vms_service.vm_service(vm.id).snapshots_service()
@@ -60,16 +61,17 @@ class OvirtBackup:
         snaps = snapshots_service.list()
         for snap in snaps:
             if snap.description.find(config.get_snapshot_description()) != -1:
-                OvirtBackup.remove_snapshot(snapshots_service, snap)
+                OvirtBackup.remove_snapshot(snapshots_service, snap, self.__logger)
 
         OvirtBackup.check_free_space(connection, config, vms_service, vm)
 
-        snapshot = OvirtBackup.create_snapshot(snapshots_service, config.get_snapshot_description(), False)
-        vm = OvirtBackup.clone_vm_from_snapshot(vms_service, snapshot, vm_clone_name, 'Cluster1')
-        OvirtBackup.remove_snapshot(snapshots_service, snapshot)
+        snapshot = OvirtBackup.create_snapshot(snapshots_service, config.get_snapshot_description(), False, self.__logger)
+        vm = OvirtBackup.clone_vm_from_snapshot(vms_service, snapshot, vm_clone_name,
+                                                config.get_cluster_name(), self.__logger)
+        OvirtBackup.remove_snapshot(snapshots_service, snapshot, self.__logger)
 
-        OvirtBackup.export_vm(vms_service, vm, export_name)
-        OvirtBackup.remove_vm(vms_service, vm)
+        OvirtBackup.export_vm(vms_service, vm, export_name, self.__logger)
+        OvirtBackup.remove_vm(vms_service, vm, self.__logger)
 
         OvirtBackup.remove_old_backups(self.__connection, self.__config, self.__logger, vm_name)
 
@@ -94,11 +96,12 @@ class OvirtBackup:
             # TODO: Extend logging (and maybe email)
             try:
                 OvirtBackup.check_name_length(vm_clone_name, config, self.__logger)
+                self.__logger.info("##################  Creating backup of VM: %s", vm_from_list)
+                self.__logger.info("##################  VM Backup Name: %s", vm_clone_name)
                 self.backup_vm(vm_from_list, vm_clone_name, config.get_export_domain())
             except Exception as ex:
                 failed_vms.append(vm_from_list)
-                print("Error creating backup of: " + vm_from_list)
-                print(ex)
+                self.__logger.error("Error creating backup of: " + vm_clone_name + " -- " + str(ex))
 
         return failed_vms
 
@@ -225,19 +228,20 @@ class OvirtBackup:
 
                 if timestamp_creation < timestamp_start:
                     logger.info("Backup deletion started for backup: %s", vm.name)
-                    OvirtBackup.remove_exported_vm(export_vms_service, vm)
+                    OvirtBackup.remove_exported_vm(export_vms_service, vm, logger)
 
         if keep_count_by_number:
             while len(target_vms) > keep_count_by_number:
                 vm = target_vms.pop(0)
                 logger.info("Backup deletion started for backup: %s", vm.name)
-                OvirtBackup.remove_exported_vm(export_vms_service, vm)
+                OvirtBackup.remove_exported_vm(export_vms_service, vm, logger)
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
     def wait(
         service,
         condition,
+        logger,
         fail_condition=lambda e: False,
         timeout=600,
         wait=True,
@@ -247,6 +251,7 @@ class OvirtBackup:
         Wait until entity fulfill expected condition.
         :param service: service of the entity
         :param condition: condition to be fulfilled
+        :param logger: python logger
         :param fail_condition: if this condition is true, raise Exception
         :param timeout: max time to wait in seconds
         :param wait: if True wait for condition, if False don't wait
@@ -261,10 +266,12 @@ class OvirtBackup:
                 if condition(entity):
                     return
                 elif fail_condition(entity):
+                    logger.error("Error while waiting on result state of the entity.")
                     raise Exception("Error while waiting on result state of the entity.")
 
                 time.sleep(float(poll_interval))
 
+            logger.error("Timeout exceed while waiting on result state of the entity.")
             raise Exception("Timeout exceed while waiting on result state of the entity.")
 
     # --------------------------------------------------------------------------------------------------
@@ -285,24 +292,25 @@ class OvirtBackup:
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
-    def remove_snapshot(snapshots_service, snapshot):
-        print('Removing snapshot ' + snapshot.description + '...')
+    def remove_snapshot(snapshots_service, snapshot, logger):
+        logger.info('Removing snapshot ' + snapshot.description + '...')
         if snapshot:
             snapshot_service = snapshots_service.snapshot_service(snapshot.id)
             snapshot_service.remove()
             OvirtBackup.wait(
                 service=snapshot_service,
                 condition=lambda snap: snap is None,
+                logger=logger,
                 wait=True,
                 timeout=180000,
             )
-            print('  --> done')
+            logger.info('  --> done')
             return snapshot.id if snapshot else None
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
-    def create_snapshot(snapshots_service, name, use_memory):
-        print('Creating snapshot...')
+    def create_snapshot(snapshots_service, name, use_memory, logger):
+        logger.info('Creating snapshot...')
         snapshot = snapshots_service.add(
             otypes.Snapshot(
                 description=name,
@@ -311,15 +319,16 @@ class OvirtBackup:
         )
         OvirtBackup.wait(
             service=snapshots_service.snapshot_service(snapshot.id),
-            condition=lambda snap: snap.snapshot_status == otypes.SnapshotStatus.OK
+            condition=lambda snap: snap.snapshot_status == otypes.SnapshotStatus.OK,
+            logger=logger,
         )
-        print('  --> done')
+        logger.info('  --> done')
         return snapshot
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
-    def clone_vm_from_snapshot(vms_service, snapshot, vm_name, cluster_name):
-        print('Cloning VM from snapshot...')
+    def clone_vm_from_snapshot(vms_service, snapshot, vm_name, cluster_name, logger):
+        logger.info('Cloning VM from snapshot...')
         cloned_vm = vms_service.add(
             vm=otypes.Vm(
                 name=vm_name,
@@ -337,16 +346,17 @@ class OvirtBackup:
         OvirtBackup.wait(
             service=vms_service.vm_service(cloned_vm.id),
             condition=lambda vm: vm.status == otypes.VmStatus.DOWN,
+            logger=logger,
             wait=True,
             timeout=180000
         )
-        print('  --> done')
+        logger.info('  --> done')
         return cloned_vm
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
-    def export_vm(vms_service, vm, export_name):
-        print('Exporting VM...')
+    def export_vm(vms_service, vm, export_name, logger):
+        logger.info('Exporting VM...')
         vm_service = vms_service.vm_service(vm.id)
         vm_service.export(
             exclusive=True,
@@ -358,39 +368,42 @@ class OvirtBackup:
         OvirtBackup.wait(
             service=vms_service.vm_service(vm.id),
             condition=lambda sv: sv.status == otypes.VmStatus.DOWN,
+            logger=logger,
         )
-        print('  --> done')
+        logger.info('  --> done')
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
-    def remove_exported_vm(export_vms_service, vm):
+    def remove_exported_vm(export_vms_service, vm, logger):
         vm_service = export_vms_service.vm_service(vm.id)
 
         if vm_service:
-            print('Removing exported VM...')
+            logger.info('Removing exported VM...')
             vm_service.remove()
         else:
-            print('  Exported VM to remove does not exist anymore...')
+            logger.info('  Exported VM to remove does not exist anymore...')
             return 0
 
         OvirtBackup.wait(
             service=vm_service,
             condition=lambda sv: sv is None,
+            logger=logger,
         )
-        print('  --> done')
+        logger.info('  --> done')
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
-    def remove_vm(vms_service, vm):
-        print('Removing VM...')
+    def remove_vm(vms_service, vm, logger):
+        logger.info('Removing VM...')
         if vm:
             vm_service = vms_service.vm_service(vm.id)
             vm_service.remove()
             OvirtBackup.wait(
                 service=vm_service,
                 condition=lambda sv: sv is None,
+                logger=logger,
             )
-            print('  --> done')
+            logger.info('  --> done')
 
     # --------------------------------------------------------------------------------------------------
     @staticmethod
