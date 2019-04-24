@@ -36,6 +36,7 @@ class OvirtBackup:
         self.__connection = OvirtBackup.connect_to_server(url, username, password, ca_file, self.__logger)
         self.__vms_service = self.__connection.system_service().vms_service()
         self.__time_start = int(time.time())
+        self.__time_tmp = int(time.time())
 
         OvirtBackup.test_config(self.__config, self.__logger, self.__connection)
 
@@ -75,12 +76,12 @@ class OvirtBackup:
 
         OvirtBackup.remove_old_backups(self.__connection, self.__config, self.__logger, vm_name)
 
-        time_end = int(time.time())
-        time_diff = (time_end - self.__time_start)
-        time_minutes = int(time_diff / 60)
-        time_seconds = time_diff % 60
+        elapsed = self.__time_tmp - int(time.time())
+        self.__logger.info("VM backup duration: %s:%s minutes", int(elapsed / 60), elapsed % 60)
 
-        self.__logger.info("Duration: %s:%s minutes", time_minutes, time_seconds)
+        time_diff = ( int(time.time()) - self.__time_start)
+        self.__logger.info("Overall time elaspsed: %s:%s minutes", int(time_diff / 60), time_diff % 60 )
+
         self.__logger.info("VM exported as %s", vm_clone_name)
         self.__logger.info("Backup done for: %s", vm.name)
 
